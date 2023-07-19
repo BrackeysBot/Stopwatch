@@ -56,9 +56,6 @@ internal sealed class SlowModeCommand : ApplicationCommandModule
         {
             slowmode = null;
         }
-        else
-        {
-        }
 
         channel ??= context.Channel;
 
