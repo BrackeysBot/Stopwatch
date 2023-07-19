@@ -80,7 +80,7 @@ internal sealed class LoggingService : BackgroundService
             builder.RegisterLayoutRenderer("ServiceName", info => info.LoggerName);
         });
 
-        Layout? layout = Layout.FromString("[${TheTime} ${level:uppercase=true}] [${PluginName}] ${message}");
+        Layout? layout = Layout.FromString("[${TheTime} ${level:uppercase=true}] [${ServiceName}] ${message}");
         var config = new LoggingConfiguration();
         var fileLogger = new LogFileTarget("FileLogger", this) { Layout = layout };
         var consoleLogger = new ColorfulConsoleTarget("ConsoleLogger") { Layout = layout };
