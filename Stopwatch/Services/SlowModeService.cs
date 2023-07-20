@@ -75,12 +75,10 @@ internal sealed class SlowModeService : BackgroundService
 
         if (!_configurationService.TryGetGuildConfiguration(channel.Guild, out GuildConfiguration? configuration))
         {
-            return 10.0f;
+            configuration = new GuildConfiguration();
         }
 
-        activityWindow = configuration.DefaultActivityWindow;
-        _activityWindows[channel.Id] = activityWindow;
-        return activityWindow;
+        return configuration.DefaultActivityWindow;
     }
 
     /// <summary>
@@ -103,12 +101,10 @@ internal sealed class SlowModeService : BackgroundService
 
         if (!_configurationService.TryGetGuildConfiguration(channel.Guild, out GuildConfiguration? configuration))
         {
-            return 0.95f;
+            configuration = new GuildConfiguration();
         }
 
-        decayRate = configuration.DefaultDecayRate;
-        _decayRates[channel.Id] = decayRate;
-        return decayRate;
+        return configuration.DefaultDecayRate;
     }
 
     /// <summary>
@@ -131,12 +127,10 @@ internal sealed class SlowModeService : BackgroundService
 
         if (!_configurationService.TryGetGuildConfiguration(channel.Guild, out GuildConfiguration? configuration))
         {
-            return 5.0f;
+            configuration = new GuildConfiguration();
         }
 
-        threshold = configuration.DefaultThreshold;
-        _thresholds[channel.Id] = threshold;
-        return threshold;
+        return configuration.DefaultThreshold;
     }
 
     /// <summary>
@@ -278,7 +272,7 @@ internal sealed class SlowModeService : BackgroundService
 
         if (!_messageTimestamps.TryGetValue(channel, out List<DateTimeOffset>? messageTimestamps))
         {
-            return 0.0f;
+            return 0.0;
         }
 
         int messageCount = messageTimestamps.RemoveAll(timestamp => timestamp < activityWindowStart);
