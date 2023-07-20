@@ -15,11 +15,8 @@ namespace Stopwatch.Services;
 /// </summary>
 internal sealed class BotService : BackgroundService
 {
-    private const string AvatarUrl = "https://raw.githubusercontent.com/BrackeysBot/Hammer/main/icon.png";
-
     private readonly ILogger<BotService> _logger;
     private readonly IServiceProvider _serviceProvider;
-    private readonly HttpClient _httpClient;
     private readonly DiscordClient _discordClient;
 
     /// <summary>
@@ -27,14 +24,11 @@ internal sealed class BotService : BackgroundService
     /// </summary>
     /// <param name="logger">The logger.</param>
     /// <param name="serviceProvider">The service provider.</param>
-    /// <param name="httpClient">The HTTP client.</param>
     /// <param name="discordClient">The Discord client.</param>
-    public BotService(ILogger<BotService> logger, IServiceProvider serviceProvider, HttpClient httpClient,
-        DiscordClient discordClient)
+    public BotService(ILogger<BotService> logger, IServiceProvider serviceProvider, DiscordClient discordClient)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
-        _httpClient = httpClient;
         _discordClient = discordClient;
 
         var attribute = typeof(BotService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
@@ -85,19 +79,6 @@ internal sealed class BotService : BackgroundService
     private async Task OnReady(DiscordClient sender, ReadyEventArgs e)
     {
         _logger.LogInformation("Discord client ready");
-
-        using HttpResponseMessage response = await _httpClient.GetAsync(AvatarUrl).ConfigureAwait(false);
-        try
-        {
-            response.EnsureSuccessStatusCode();
-
-            await using Stream stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            await sender.UpdateCurrentUserAsync(avatar: stream).ConfigureAwait(false);
-        }
-        catch (HttpRequestException exception)
-        {
-            _logger.LogWarning(exception, "Could not update profile picture from repo");
-        }
     }
 
     private void RegisterEvents(SlashCommandsExtension slashCommands)
