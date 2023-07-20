@@ -57,7 +57,7 @@ internal sealed class BotService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         StartedAt = DateTimeOffset.UtcNow;
-        _logger.LogInformation("Hammer v{Version} is starting...", Version);
+        _logger.LogInformation("Stopwatch v{Version} is starting...", Version);
 
         SlashCommandsExtension slashCommands = _discordClient.UseSlashCommands(new SlashCommandsConfiguration
         {
