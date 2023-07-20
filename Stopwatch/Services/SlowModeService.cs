@@ -51,7 +51,7 @@ internal sealed class SlowModeService : BackgroundService
         _discordClient = discordClient;
 
         _updateTimer.Enabled = false;
-        _updateTimer.Interval = 10000;
+        _updateTimer.Interval = configurationService.BotConfiguration.UpdateInterval;
         _updateTimer.Elapsed += UpdateTimerOnElapsed;
     }
 
