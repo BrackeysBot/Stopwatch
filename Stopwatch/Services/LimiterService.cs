@@ -61,19 +61,31 @@ internal sealed class LimiterService : BackgroundService
             throw new ArgumentNullException(nameof(channel));
         }
 
-        RemoveLimiter(channel);
         _limits[channel.Id] = rate;
 
+        LimitedChannel? limitedChannel = _limitedChannels.Find(c => c.GuildId == channel.Guild.Id && c.ChannelId == channel.Id);
         using StopwatchContext context = _dbContextFactory.CreateDbContext();
-        EntityEntry<LimitedChannel> entry = context.LimitedChannels.Add(new LimitedChannel
+
+        if (limitedChannel is null)
         {
-            GuildId = channel.Guild.Id,
-            ChannelId = channel.Id,
-            Count = rate.Count,
-            Duration = rate.Duration.TotalSeconds
-        });
-        context.SaveChanges();
-        _limitedChannels.Add(entry.Entity);
+            EntityEntry<LimitedChannel> entry = context.LimitedChannels.Add(new LimitedChannel
+            {
+                GuildId = channel.Guild.Id,
+                ChannelId = channel.Id,
+                Count = rate.Count,
+                Duration = rate.Duration.TotalSeconds
+            });
+            context.SaveChanges();
+
+            limitedChannel = entry.Entity;
+            _limitedChannels.Add(limitedChannel);
+        }
+        else
+        {
+            limitedChannel.Count = rate.Count;
+            limitedChannel.Duration = rate.Duration.TotalSeconds;
+            context.SaveChanges();
+        }
     }
 
     /// <summary>
