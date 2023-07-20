@@ -33,7 +33,7 @@ internal sealed class LimitedChannel : IEquatable<LimitedChannel>
     ///     Gets or sets the slowmode rate limit threshold.
     /// </summary>
     /// <value>The slowmode rate limit threshold.</value>
-    public double Threshold { get; set; } = 5.0;
+    public double Threshold { get; set; } = 0.2;
 
     public static bool operator ==(LimitedChannel? left, LimitedChannel? right)
     {

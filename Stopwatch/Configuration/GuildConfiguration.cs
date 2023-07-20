@@ -27,7 +27,7 @@ internal sealed class GuildConfiguration
     ///     Gets or sets the default slowmode threshold.
     /// </summary>
     /// <value>The default slowmode threshold.</value>
-    public double DefaultThreshold { get; set; } = 5.0;
+    public double DefaultThreshold { get; set; } = 0.2;
 
     /// <summary>
     ///     Gets or sets the ID of the log channel.
