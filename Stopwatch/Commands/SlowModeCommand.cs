@@ -52,12 +52,15 @@ internal sealed partial class SlowModeCommand : ApplicationCommandModule
 
         if (int.TryParse(timeRaw, out int seconds))
         {
-            seconds = Math.Clamp(seconds, 0, 21600); // 21600s = 6h. Discord-imposed maximum
-            embed = SetStaticSlowMode(context, channel, TimeSpan.FromSeconds(seconds));
+            embed = seconds <= 0
+                ? DisableSlowMode(context, channel)
+                : SetStaticSlowMode(context, channel, TimeSpan.FromSeconds(seconds));
         }
         else if (TimeSpanParser.TryParse(timeRaw, out TimeSpan timeSpan))
         {
-            embed = SetStaticSlowMode(context, channel, timeSpan);
+            embed = timeSpan == TimeSpan.Zero
+                ? DisableSlowMode(context, channel)
+                : SetStaticSlowMode(context, channel, timeSpan);
         }
         else if (string.Equals(timeRaw, "off", StringComparison.OrdinalIgnoreCase))
         {
