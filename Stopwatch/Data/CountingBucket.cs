@@ -13,7 +13,6 @@ internal sealed class CountingBucket
     public void Increment(ulong channelId)
     {
         _counts.AddOrUpdate(channelId, 1, (_, count) => count + 1);
-        Console.WriteLine($"Incremented count for channel {channelId} to {_counts[channelId]}");
     }
 
     /// <summary>
