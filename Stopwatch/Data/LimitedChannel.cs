@@ -6,16 +6,34 @@
 internal sealed class LimitedChannel : IEquatable<LimitedChannel>
 {
     /// <summary>
+    ///     Gets or sets the slowmode activity window.
+    /// </summary>
+    /// <value>The slowmode activity window.</value>
+    public double ActivityWindow { get; set; } = 10.0;
+
+    /// <summary>
     ///     Gets or sets the channel ID.
     /// </summary>
     /// <value>The channel ID.</value>
     public ulong ChannelId { get; set; }
 
     /// <summary>
+    ///     Gets or sets the slowmode decay rate.
+    /// </summary>
+    /// <value>The slowmode decay rate.</value>
+    public double DecayRate { get; set; } = 0.95;
+
+    /// <summary>
     ///     Gets or sets the guild ID.
     /// </summary>
     /// <value>The guild ID.</value>
     public ulong GuildId { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the slowmode rate limit threshold.
+    /// </summary>
+    /// <value>The slowmode rate limit threshold.</value>
+    public double Threshold { get; set; } = 5.0;
 
     public static bool operator ==(LimitedChannel? left, LimitedChannel? right)
     {

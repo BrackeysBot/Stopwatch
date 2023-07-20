@@ -12,6 +12,24 @@ internal sealed class GuildConfiguration
     public bool CountBotMessages { get; set; } = false;
 
     /// <summary>
+    ///     Gets or sets the default slowmode activity window.
+    /// </summary>
+    /// <value>The default slowmode activity window.</value>
+    public double DefaultActivityWindow { get; set; } = 10.0;
+
+    /// <summary>
+    ///     Gets or sets the default slowmode decay rate.
+    /// </summary>
+    /// <value>The default slowmode decay rate.</value>
+    public double DefaultDecayRate { get; set; } = 0.95;
+
+    /// <summary>
+    ///     Gets or sets the default slowmode threshold.
+    /// </summary>
+    /// <value>The default slowmode threshold.</value>
+    public double DefaultThreshold { get; set; } = 5.0;
+
+    /// <summary>
     ///     Gets or sets the ID of the log channel.
     /// </summary>
     public ulong LogChannel { get; set; }

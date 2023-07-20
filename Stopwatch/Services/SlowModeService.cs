@@ -19,8 +19,6 @@ namespace Stopwatch.Services;
 /// </summary>
 internal sealed class SlowModeService : BackgroundService
 {
-    private const double Threshold = 5.0f;
-    private const double DecayRate = 0.95f;
     private const int MaxSlowmode = 21600; // 6h, Discord's max
 
     private readonly ILogger<SlowModeService> _logger;
@@ -29,9 +27,11 @@ internal sealed class SlowModeService : BackgroundService
     private readonly DiscordClient _discordClient;
     private readonly List<LimitedChannel> _activeChannels = new();
     private readonly ConcurrentDictionary<DiscordChannel, TimeSpan> _channelRates = new();
+    private readonly ConcurrentDictionary<ulong, double> _activityWindows = new();
+    private readonly ConcurrentDictionary<ulong, double> _decayRates = new();
+    private readonly ConcurrentDictionary<ulong, double> _thresholds = new();
     private readonly ConcurrentDictionary<DiscordChannel, List<DateTimeOffset>> _messageTimestamps = new();
     private readonly Timer _updateTimer = new();
-    private readonly TimeSpan _activityWindow = TimeSpan.FromSeconds(10.0);
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SlowModeService" /> class.
@@ -53,6 +53,90 @@ internal sealed class SlowModeService : BackgroundService
         _updateTimer.Enabled = false;
         _updateTimer.Interval = 10000;
         _updateTimer.Elapsed += UpdateTimerOnElapsed;
+    }
+
+    /// <summary>
+    ///     Gets the activity window for the specified channel.
+    /// </summary>
+    /// <param name="channel">The channel whose activity window to retrieve.</param>
+    /// <returns>The activity window for the specified channel.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="channel" /> is <see langword="null" />.</exception>
+    public double GetActivityWindow(DiscordChannel channel)
+    {
+        if (channel is null)
+        {
+            throw new ArgumentNullException(nameof(channel));
+        }
+
+        if (_activityWindows.TryGetValue(channel.Id, out double activityWindow))
+        {
+            return activityWindow;
+        }
+
+        if (!_configurationService.TryGetGuildConfiguration(channel.Guild, out GuildConfiguration? configuration))
+        {
+            return 10.0f;
+        }
+
+        activityWindow = configuration.DefaultActivityWindow;
+        _activityWindows[channel.Id] = activityWindow;
+        return activityWindow;
+    }
+
+    /// <summary>
+    ///     Gets the decay rate for the specified channel.
+    /// </summary>
+    /// <param name="channel">The channel whose decay rate to retrieve.</param>
+    /// <returns>The decay rate for the specified channel.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="channel" /> is <see langword="null" />.</exception>
+    public double GetDecayRate(DiscordChannel channel)
+    {
+        if (channel is null)
+        {
+            throw new ArgumentNullException(nameof(channel));
+        }
+
+        if (_decayRates.TryGetValue(channel.Id, out double decayRate))
+        {
+            return decayRate;
+        }
+
+        if (!_configurationService.TryGetGuildConfiguration(channel.Guild, out GuildConfiguration? configuration))
+        {
+            return 0.95f;
+        }
+
+        decayRate = configuration.DefaultDecayRate;
+        _decayRates[channel.Id] = decayRate;
+        return decayRate;
+    }
+
+    /// <summary>
+    ///     Gets the threshold for the specified channel.
+    /// </summary>
+    /// <param name="channel">The channel whose threshold to retrieve.</param>
+    /// <returns>The threshold for the specified channel.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="channel" /> is <see langword="null" />.</exception>
+    public double GetThreshold(DiscordChannel channel)
+    {
+        if (channel is null)
+        {
+            throw new ArgumentNullException(nameof(channel));
+        }
+
+        if (_thresholds.TryGetValue(channel.Id, out double threshold))
+        {
+            return threshold;
+        }
+
+        if (!_configurationService.TryGetGuildConfiguration(channel.Guild, out GuildConfiguration? configuration))
+        {
+            return 5.0f;
+        }
+
+        threshold = configuration.DefaultThreshold;
+        _thresholds[channel.Id] = threshold;
+        return threshold;
     }
 
     /// <summary>
@@ -115,11 +199,18 @@ internal sealed class SlowModeService : BackgroundService
     ///     <see langword="true" /> to enable automatic slowmode for <paramref name="channel" />; otherwise,
     ///     <see langword="false" />.
     /// </param>
+    /// <param name="threshold">The threshold for automatic slowmode.</param>
+    /// <param name="activityWindow">The activity window for automatic slowmode.</param>
+    /// <param name="decayRate">The decay rate for automatic slowmode.</param>
     /// <exception cref="ArgumentNullException"><paramref name="channel" /> is <see langword="null" />.</exception>
     /// <exception cref="ArgumentException">
     ///     <paramref name="channel" /> is not a valid channel type, or is not a guild channel.
     /// </exception>
-    public void SetAutomaticSlowMode(DiscordChannel channel, bool enable)
+    public void SetAutomaticSlowMode(DiscordChannel channel,
+        bool enable,
+        double threshold,
+        double activityWindow,
+        double decayRate)
     {
         if (channel is null)
         {
@@ -136,23 +227,28 @@ internal sealed class SlowModeService : BackgroundService
             throw new ArgumentException("Cannot set slowmode for voice or stage channel.", nameof(channel));
         }
 
-        switch (enable)
+        if (enable)
         {
-            case true when !TryGetAutomaticSlowModeChannel(channel, out _):
+            if (TryGetAutomaticSlowModeChannel(channel, out LimitedChannel? limitedChannel))
+            {
+                _logger.LogInformation("Updating automatic slowmode rate for {Channel}", channel);
+                RemoveAutomaticSlowModeChannel(limitedChannel);
+                _activeChannels.Remove(limitedChannel);
+            }
+            else
             {
                 _logger.LogInformation("Enabling automatic slowmode for {Channel}", channel);
-                LimitedChannel limited = CreateAutomaticSlowModeChannel(channel);
-                _activeChannels.Add(limited);
-                break;
             }
 
-            case false when TryGetAutomaticSlowModeChannel(channel, out LimitedChannel? automaticSlowModeChannel):
-                _logger.LogInformation("Disabling automatic slowmode for {Channel}", channel);
-
-                RemoveAutomaticSlowModeChannel(automaticSlowModeChannel);
-                _activeChannels.Remove(automaticSlowModeChannel);
-                _messageTimestamps.TryRemove(channel, out _);
-                break;
+            LimitedChannel limited = CreateAutomaticSlowModeChannel(channel, threshold, activityWindow, decayRate);
+            _activeChannels.Add(limited);
+        }
+        else if (TryGetAutomaticSlowModeChannel(channel, out LimitedChannel? limitedChannel))
+        {
+            _logger.LogInformation("Disabling automatic slowmode for {Channel}", channel);
+            RemoveAutomaticSlowModeChannel(limitedChannel);
+            _activeChannels.Remove(limitedChannel);
+            _messageTimestamps.TryRemove(channel, out _);
         }
     }
 
@@ -176,8 +272,9 @@ internal sealed class SlowModeService : BackgroundService
 
     private double CalculateActivityRate(DiscordChannel channel)
     {
+        double activityWindow = GetActivityWindow(channel);
         DateTime currentDateTime = DateTime.Now;
-        DateTime activityWindowStart = currentDateTime - _activityWindow;
+        DateTime activityWindowStart = currentDateTime - TimeSpan.FromSeconds(activityWindow);
 
         if (!_messageTimestamps.TryGetValue(channel, out List<DateTimeOffset>? messageTimestamps))
         {
@@ -185,10 +282,13 @@ internal sealed class SlowModeService : BackgroundService
         }
 
         int messageCount = messageTimestamps.RemoveAll(timestamp => timestamp < activityWindowStart);
-        return messageCount / _activityWindow.TotalSeconds;
+        return messageCount / activityWindow;
     }
 
-    private LimitedChannel CreateAutomaticSlowModeChannel(DiscordChannel channel)
+    private LimitedChannel CreateAutomaticSlowModeChannel(DiscordChannel channel,
+        double threshold,
+        double activityWindow,
+        double decayRate)
     {
         if (channel is null)
         {
@@ -200,12 +300,19 @@ internal sealed class SlowModeService : BackgroundService
             return automaticChannel;
         }
 
+        _thresholds[channel.Id] = threshold;
+        _activityWindows[channel.Id] = activityWindow;
+        _decayRates[channel.Id] = decayRate;
+
         using IServiceScope scope = _scopeFactory.CreateScope();
         using var context = scope.ServiceProvider.GetRequiredService<StopwatchContext>();
         EntityEntry<LimitedChannel> entity = context.LimitedChannels.Add(new LimitedChannel
         {
             GuildId = channel.Guild.Id,
-            ChannelId = channel.Id
+            ChannelId = channel.Id,
+            Threshold = threshold,
+            ActivityWindow = activityWindow,
+            DecayRate = decayRate
         });
         context.SaveChanges();
         return entity.Entity;
@@ -217,6 +324,10 @@ internal sealed class SlowModeService : BackgroundService
         {
             throw new ArgumentNullException(nameof(channel));
         }
+
+        _thresholds.TryRemove(channel.ChannelId, out _);
+        _activityWindows.TryRemove(channel.ChannelId, out _);
+        _decayRates.TryRemove(channel.ChannelId, out _);
 
         using IServiceScope scope = _scopeFactory.CreateScope();
         using var context = scope.ServiceProvider.GetRequiredService<StopwatchContext>();
@@ -254,13 +365,14 @@ internal sealed class SlowModeService : BackgroundService
             DiscordChannel discordChannel = guild.GetChannel(channel.ChannelId);
 
             double activityRate = CalculateActivityRate(discordChannel);
-            if (activityRate >= Threshold)
+            if (activityRate >= GetThreshold(discordChannel))
             {
                 _channelRates[discordChannel] = TimeSpan.FromSeconds(Math.Min(activityRate * 10, MaxSlowmode));
             }
             else
             {
-                _channelRates[discordChannel] = TimeSpan.FromSeconds(Math.Min(activityRate * DecayRate, MaxSlowmode));
+                _channelRates[discordChannel] =
+                    TimeSpan.FromSeconds(Math.Min(activityRate * GetDecayRate(discordChannel), MaxSlowmode));
             }
 
             tasks.Add(SetSlowModeAsync(discordChannel, _channelRates[discordChannel]));
