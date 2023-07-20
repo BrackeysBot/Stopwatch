@@ -28,8 +28,9 @@ builder.Services.AddHostedService<DatabaseService>();
 builder.Services.AddSingleton<HttpClient>();
 builder.Services.AddSingleton<ConfigurationService>();
 builder.Services.AddHostedSingleton<DiscordLogService>();
-builder.Services.AddHostedSingleton<SlowModeService>();
-builder.Services.AddDbContext<StopwatchContext>();
+builder.Services.AddHostedSingleton<MessageCountingService>();
+builder.Services.AddHostedSingleton<LimiterService>();
+builder.Services.AddDbContextFactory<StopwatchContext>();
 builder.Services.AddHostedSingleton<BotService>();
 
 IHost app = builder.Build();

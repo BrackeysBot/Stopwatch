@@ -16,8 +16,7 @@ internal sealed class LimitedChannelConfiguration : IEntityTypeConfiguration<Lim
 
         builder.Property(e => e.GuildId);
         builder.Property(e => e.ChannelId);
-        builder.Property(e => e.ActivityWindow);
-        builder.Property(e => e.DecayRate);
-        builder.Property(e => e.Threshold);
+        builder.Property(e => e.Count);
+        builder.Property(e => e.Duration);
     }
 }

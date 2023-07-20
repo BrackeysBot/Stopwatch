@@ -9,7 +9,9 @@
 </p>
 
 ## About
-Stopwatch is a Discord bot which manages slowmode in text channels.
+Stopwatch is a Discord bot which manages slowmode in text channels. The logic of this bot mirrors the implementation of SlothBot
+by The Programmer's Hangout, and essentially serves as a C# port of that bot. You can view the original SlothBot implementation
+[here](https://github.com/the-programmers-hangout/slothbot).
 
 ## Installing and configuring Stopwatch 
 Stopwatch runs in a Docker container, and there is a [docker-compose.yaml](docker-compose.yaml) file which simplifies this process.

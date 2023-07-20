@@ -4,8 +4,8 @@ using DSharpPlus.SlashCommands;
 using DSharpPlus.SlashCommands.Attributes;
 using Humanizer;
 using Stopwatch.Configuration;
+using Stopwatch.Data;
 using Stopwatch.Services;
-using X10D.DSharpPlus;
 using X10D.Time;
 
 namespace Stopwatch.Commands;
@@ -16,21 +16,21 @@ namespace Stopwatch.Commands;
 internal sealed partial class SlowModeCommand : ApplicationCommandModule
 {
     private static readonly Regex RateRegex = GetRateRegex();
-    private readonly SlowModeService _slowModeService;
+    private readonly LimiterService _limiterService;
     private readonly DiscordLogService _logService;
     private readonly ConfigurationService _configurationService;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SlowModeCommand" /> class.
     /// </summary>
-    /// <param name="slowModeService">The slowmode service.</param>
+    /// <param name="limiterService">The limiter service.</param>
     /// <param name="logService">The log service.</param>
     /// <param name="configurationService">The configuration service.</param>
-    public SlowModeCommand(SlowModeService slowModeService,
+    public SlowModeCommand(LimiterService limiterService,
         DiscordLogService logService,
         ConfigurationService configurationService)
     {
-        _slowModeService = slowModeService;
+        _limiterService = limiterService;
         _logService = logService;
         _configurationService = configurationService;
     }
@@ -45,81 +45,83 @@ internal sealed partial class SlowModeCommand : ApplicationCommandModule
     )
     {
         await context.DeferAsync(true).ConfigureAwait(false);
-
         channel ??= context.Channel;
-        TimeSpan? slowmode = null;
-        var automatic = false;
+
+        var embed = new DiscordEmbedBuilder();
+        var log = true;
 
         if (int.TryParse(timeRaw, out int seconds))
         {
-            slowmode = TimeSpan.FromSeconds(Math.Clamp(seconds, 0, 21600)); // 21600s = 6h. Discord-imposed maximum
-            _slowModeService.SetAutomaticSlowMode(channel, false, 0, 0, 0);
+            seconds = Math.Clamp(seconds, 0, 21600); // 21600s = 6h. Discord-imposed maximum
+            embed = SetStaticSlowMode(context, channel, TimeSpan.FromSeconds(seconds));
         }
-        else if (TimeSpanParser.TryParse(timeRaw, out TimeSpan duration))
+        else if (TimeSpanParser.TryParse(timeRaw, out TimeSpan timeSpan))
         {
-            slowmode = duration;
-            _slowModeService.SetAutomaticSlowMode(channel, false, 0, 0, 0);
+            embed = SetStaticSlowMode(context, channel, timeSpan);
         }
         else if (string.Equals(timeRaw, "off", StringComparison.OrdinalIgnoreCase))
         {
-            slowmode = TimeSpan.Zero; // this is really just a QoL feature. since we accept a string then... why not?
-            _slowModeService.SetAutomaticSlowMode(channel, false, 0, 0, 0);
+            embed = DisableSlowMode(context, channel);
         }
         else if (string.Equals(timeRaw, "auto", StringComparison.OrdinalIgnoreCase))
         {
-            slowmode = null;
-            automatic = true;
-
-            if (!_configurationService.TryGetGuildConfiguration(context.Guild, out GuildConfiguration? configuration))
-            {
-                configuration = new GuildConfiguration();
-            }
-
-            _slowModeService.SetAutomaticSlowMode(channel, true, configuration.DefaultThreshold,
-                configuration.DefaultActivityWindow, configuration.DefaultDecayRate);
+            embed = SetRatedSlowMode(context, channel, _limiterService.GetDefaultRate(context.Guild));
         }
-        else if (TryGetRate(context.Guild, timeRaw, out double threshold, out double window, out double decay))
+        else if (TryGetRate(context.Guild, timeRaw, out long count, out double duration))
         {
-            automatic = true;
-            slowmode = null;
-            Console.WriteLine($"Threshold: {threshold}, Window: {window}, Decay: {decay}");
-            _slowModeService.SetAutomaticSlowMode(channel, true, threshold, window, decay);
+            embed = SetRatedSlowMode(context, channel, Rate.Per(TimeSpan.FromSeconds(duration), count));
         }
         else
         {
-            automatic = !slowmode.HasValue;
-            _slowModeService.SetAutomaticSlowMode(channel, automatic, -1, -1, -1);
-        }
-
-        var embed = new DiscordEmbedBuilder();
-        embed.AddField("Channel", channel.Mention, true);
-        embed.AddField("Staff Member", context.User.Mention, true);
-
-        if (automatic)
-        {
-            embed.WithColor(DiscordColor.Orange);
-            embed.WithTitle("Slowmode Enabled");
-            embed.AddField("Slowmode", "Automatic", true);
-            embed.AddField("Threshold", _slowModeService.GetThreshold(channel), true);
-            embed.AddField("Activity Window", _slowModeService.GetActivityWindow(channel), true);
-            embed.AddField("Decay Rate", _slowModeService.GetDecayRate(channel), true);
-        }
-        else
-        {
-            _slowModeService.SetAutomaticSlowMode(channel, false, 0, 0, 0);
-            TimeSpan duration = slowmode!.Value;
-
-            embed.WithColor(duration > TimeSpan.Zero ? DiscordColor.Orange : DiscordColor.Green);
-            embed.WithTitle($"Slowmode {(duration > TimeSpan.Zero ? "Enabled" : "Disabled")}");
-            embed.AddFieldIf(duration > TimeSpan.Zero, "Slowmode", duration.Humanize(), true);
-            await _slowModeService.SetSlowModeAsync(channel, duration);
+            embed.WithTitle("Invalid Input");
+            embed.WithColor(DiscordColor.Red);
+            embed.WithDescription($"Input `{timeRaw}` was not recognized as a valid time duration or ratio.");
+            await context.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed.Build())).ConfigureAwait(false);
+            log = false;
         }
 
         await context.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed.Build())).ConfigureAwait(false);
-        await _logService.LogAsync(context.Guild, embed).ConfigureAwait(false);
+        if (log)
+        {
+            await _logService.LogAsync(context.Guild, embed).ConfigureAwait(false);
+        }
     }
 
-    private bool TryGetRate(DiscordGuild guild, string input, out double threshold, out double window, out double decay)
+    private static DiscordEmbedBuilder GetDefaultEmbed(BaseContext context, DiscordChannel channel)
+    {
+        var embed = new DiscordEmbedBuilder();
+        embed.WithColor(DiscordColor.Orange);
+        embed.WithTitle("Slowmode Enabled");
+        embed.AddField("Channel", channel.Mention, true);
+        embed.AddField("Staff Member", context.User.Mention, true);
+        return embed;
+    }
+
+    private DiscordEmbedBuilder DisableSlowMode(BaseContext context, DiscordChannel channel)
+    {
+        _limiterService.RemoveLimiter(channel);
+
+        return GetDefaultEmbed(context, channel).WithColor(DiscordColor.Green).WithTitle("Slowmode Disabled");
+    }
+
+    private DiscordEmbedBuilder SetRatedSlowMode(BaseContext context, DiscordChannel channel, Rate rate)
+    {
+        _limiterService.AddLimiter(channel, rate);
+
+        return GetDefaultEmbed(context, channel).AddField("Slowmode", $"Automatic ({rate})", true);
+    }
+
+    private DiscordEmbedBuilder SetStaticSlowMode(BaseContext context, DiscordChannel channel, TimeSpan duration)
+    {
+        var seconds = (int)Math.Clamp(duration.TotalSeconds, 0, 21600); // 21600s = 6h. Discord-imposed maximum
+
+        _limiterService.RemoveLimiter(channel);
+        _limiterService.UpdateSlowMode(channel, (int)duration.TotalSeconds);
+
+        return GetDefaultEmbed(context, channel).AddField("Slowmode", $"{duration.Humanize()} ({seconds}s)", true);
+    }
+
+    private bool TryGetRate(DiscordGuild guild, string input, out long count, out double duration)
     {
         if (!_configurationService.TryGetGuildConfiguration(guild, out GuildConfiguration? configuration))
         {
@@ -129,31 +131,29 @@ internal sealed partial class SlowModeCommand : ApplicationCommandModule
         Match match = RateRegex.Match(input);
         if (!match.Success)
         {
-            threshold = configuration.DefaultThreshold;
-            window = configuration.DefaultActivityWindow;
-            decay = configuration.DefaultDecayRate;
+            count = configuration.DefaultCount;
+            duration = configuration.DefaultDuration;
             return false;
         }
 
         GroupCollection groups = match.Groups;
-        if (!double.TryParse(groups[1].Value, out threshold))
+        if (!long.TryParse(groups[1].Value, out count))
         {
-            threshold = configuration.DefaultThreshold;
+            count = configuration.DefaultCount;
         }
 
-        if (!double.TryParse(groups[2].Value, out window))
+        if (TimeSpanParser.TryParse(groups[2].Value, out TimeSpan span))
         {
-            window = configuration.DefaultActivityWindow;
+            duration = span.TotalSeconds;
         }
-
-        if (groups.Count < 3 || !groups[3].Success || !double.TryParse(groups[3].Value, out decay))
+        else if (!double.TryParse(groups[2].Value, out duration))
         {
-            decay = configuration.DefaultDecayRate;
+            duration = configuration.DefaultDuration;
         }
 
         return true;
     }
 
-    [GeneratedRegex(@"^((?:\d*\.)?\d+)/((?:\d*\.)?\d+)(?:/((?:\d*\.)?\d+))?$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^(\d+)/(.*?)$", RegexOptions.Compiled)]
     private static partial Regex GetRateRegex();
 }

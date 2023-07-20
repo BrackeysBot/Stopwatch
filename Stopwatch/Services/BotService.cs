@@ -65,6 +65,7 @@ internal sealed class BotService : BackgroundService
         });
 
         _logger.LogInformation("Registering commands...");
+        slashCommands.RegisterCommands<BucketsCommand>();
         slashCommands.RegisterCommands<InfoCommand>();
         slashCommands.RegisterCommands<SlowModeCommand>();
 
