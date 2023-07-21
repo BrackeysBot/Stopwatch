@@ -76,12 +76,24 @@ internal sealed class MessageCountingService : BackgroundService
 
     private Task OnMessageCreated(DiscordClient sender, MessageCreateEventArgs args)
     {
+        if (args.Author is not DiscordMember author)
+        {
+            // not a guild message
+            return Task.CompletedTask;
+        }
+
         if (!_configurationService.TryGetGuildConfiguration(args.Guild, out GuildConfiguration? guildConfiguration))
         {
             guildConfiguration = new GuildConfiguration();
         }
 
-        bool isBotMessage = args.Author.IsBot;
+        if (guildConfiguration.IgnoredRoleIds is { Length: > 0 } ignoredRoleIds &&
+            author.Roles.Select(r => r.Id).Any(ignoredRoleIds.Contains))
+        {
+            return Task.CompletedTask;
+        }
+
+        bool isBotMessage = author.IsBot;
 
         if (guildConfiguration.CountBotMessages || !isBotMessage)
         {
